@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 
 import PlayerSelectionCard from "./PlayerSelectionCard";
+import { Spinner } from "../auth/fields";
 
 import {
     getPlayingXI,
@@ -11,6 +12,61 @@ import {
 import {
     getTeamSquad
 } from "../../services/teamService";
+
+const prettyName = (n = "") => n.replace(/_/g, " ");
+
+const focusRing =
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500";
+
+function Slot({ label, player, striker = false, locked = false }) {
+
+    return (
+
+        <div
+            className={`
+                rounded-xl px-4 py-3
+                ${player
+                    ? striker
+                        ? "bg-green-500/10 ring-1 ring-green-500/30"
+                        : "bg-zinc-800"
+                    : "border border-dashed border-zinc-700"
+                }
+            `}
+        >
+
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+
+                {striker && player && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+                )}
+
+                {label}
+
+                {locked && (
+                    <span className="ml-auto rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-yellow-300">
+                        Not out
+                    </span>
+                )}
+
+            </p>
+
+            <p className={`mt-1 truncate text-lg font-semibold ${player ? "text-white" : "text-zinc-600"}`}>
+
+                {player ? prettyName(player.name) : "Not selected"}
+
+            </p>
+
+            {player && (
+                <p className="truncate text-xs text-zinc-500">
+                    {player.userId}
+                </p>
+            )}
+
+        </div>
+
+    );
+
+}
 
 function BatsmenSelectionCard({
     match,
@@ -38,7 +94,7 @@ function BatsmenSelectionCard({
 
     const [saving, setSaving] = useState(false);
 
-
+    const [error, setError] = useState(false);
 
     const isOpeningPair =
         !innings?.strikerId &&
@@ -59,6 +115,8 @@ function BatsmenSelectionCard({
         try {
 
             setLoading(true);
+
+            setError(false);
 
             // Fetch Playing XI
             const playingXI =
@@ -113,7 +171,7 @@ function BatsmenSelectionCard({
 
             const player =
                 availablePlayers.find(
-                    p => p.userId ===survivingBatsmanId
+                    p => p.userId === survivingBatsmanId
                 );
 
             setSurvivingBatsman(player ?? null);
@@ -136,6 +194,8 @@ function BatsmenSelectionCard({
         } catch (err) {
 
             console.error(err);
+
+            setError(true);
 
             toast.error(
                 "Failed to load Playing XI."
@@ -251,6 +311,12 @@ function BatsmenSelectionCard({
     };
     const handleConfirm = async () => {
 
+        if (saving) {
+
+            return;
+
+        }
+
         if (!validateSelection()) {
 
             return;
@@ -301,13 +367,66 @@ function BatsmenSelectionCard({
         }
 
     };
+
+    // --------------------------------------------------
+    // Display helpers (nothing here is sent to the backend)
+    // --------------------------------------------------
+
+    const battingEntry = (userId) =>
+        innings?.batting?.find(b => b.batsmanId === userId);
+
+    const battingInfo = (userId) => {
+
+        const entry = battingEntry(userId);
+
+        if (!entry) return "Yet to bat";
+
+        return `${entry.runs} (${entry.balls}) · ${entry.dismissal ?? "not out"}`;
+
+    };
+
+    const badgeFor = (player) => {
+
+        if (selectedPlayers[0]?.userId === player.userId) return "STRIKER";
+
+        if (selectedPlayers[1]?.userId === player.userId) return "NON-STRIKER";
+
+        if (battingEntry(player.userId)?.dismissal) return "OUT";
+
+        return "";
+
+    };
+
+    const isLocked = (player) =>
+        Boolean(player) && survivingBatsman?.userId === player.userId;
+
+    const hint =
+        selectedPlayers.length === 2
+            ? `Striker: ${prettyName(selectedPlayers[0].name)} · Non-striker: ${prettyName(selectedPlayers[1].name)}`
+            : selectedPlayers.length === 1
+                ? survivingBatsman
+                    ? "Now pick the new batsman."
+                    : "Now pick the non-striker."
+                : "Pick the striker first, then the non-striker.";
+
     if (loading) {
 
         return (
 
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-center">
+            <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
 
-                Loading Playing XI...
+                <div className="h-8 w-64 animate-pulse rounded-lg bg-zinc-800" />
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="h-20 animate-pulse rounded-xl bg-zinc-800" />
+                    <div className="h-20 animate-pulse rounded-xl bg-zinc-800" />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                    {[...Array(6)].map((_, i) => (
+                        <div key={i} className="h-20 animate-pulse rounded-xl bg-zinc-800" />
+                    ))}
+                </div>
 
             </div>
 
@@ -317,11 +436,11 @@ function BatsmenSelectionCard({
 
     return (
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-6">
+        <div className="space-y-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
 
             <div>
 
-                <h2 className="text-2xl font-bold">
+                <h2 className="text-2xl font-bold text-white">
 
                     {
                         isOpeningPair
@@ -331,7 +450,7 @@ function BatsmenSelectionCard({
 
                 </h2>
 
-                <p className="text-zinc-400 mt-1">
+                <p className="mt-1 text-zinc-400">
 
                     First selected player will be the
                     <span className="font-semibold text-white">
@@ -349,7 +468,7 @@ function BatsmenSelectionCard({
             {
                 survivingBatsman && (
 
-                    <div className="rounded-xl bg-yellow-500/10 border border-yellow-500/40 p-4">
+                    <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-4">
 
                         <p className="text-sm text-yellow-300">
 
@@ -359,13 +478,13 @@ function BatsmenSelectionCard({
 
                         </p>
 
-                        <p className="font-semibold text-lg mt-1">
+                        <p className="mt-1 text-lg font-semibold text-white">
 
-                            {survivingBatsman.name}
+                            {prettyName(survivingBatsman.name)}
 
                         </p>
 
-                        <p className="text-xs text-zinc-400 mt-1">
+                        <p className="mt-1 text-xs text-zinc-400">
 
                             Keep this player in the batting pair.
 
@@ -376,57 +495,20 @@ function BatsmenSelectionCard({
                 )
             }
 
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid gap-3 sm:grid-cols-2">
 
-                <div className="rounded-xl bg-zinc-800 p-4">
+                <Slot
+                    striker
+                    label="Striker"
+                    player={selectedPlayers[0]}
+                    locked={isLocked(selectedPlayers[0])}
+                />
 
-                    <p className="text-sm text-zinc-400">
-
-                        Striker
-
-                    </p>
-
-                    <p className="font-semibold text-lg mt-2">
-                        {selectedPlayers[0]?.name ?? "Not Selected"}
-                    </p>
-
-                    {
-                        selectedPlayers[0] && (
-                            <p className="text-xs text-zinc-400">
-                                {selectedPlayers[0].userId}
-                            </p>
-                        )
-                    }
-
-                </div>
-
-                <div className="rounded-xl bg-zinc-800 p-4">
-
-                    <p className="text-sm text-zinc-400">
-
-                        Non-Striker
-
-                    </p>
-
-                    <p className="font-semibold text-lg mt-2">
-
-                        {
-                            selectedPlayers[1]?.name ??
-                            "Not Selected"
-                        }
-
-                    </p>
-
-                    {
-                        selectedPlayers[1] && (
-                            <p className="text-xs text-zinc-400">
-                                {selectedPlayers[1].userId}
-                            </p>
-                        )
-                    }
-
-
-                </div>
+                <Slot
+                    label="Non-Striker"
+                    player={selectedPlayers[1]}
+                    locked={isLocked(selectedPlayers[1])}
+                />
 
             </div>
 
@@ -434,8 +516,10 @@ function BatsmenSelectionCard({
                 selectedPlayers.length === 2 && (
 
                     <button
+                        type="button"
                         onClick={swapBatsmen}
-                        className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 py-3 font-semibold transition"
+                        disabled={saving}
+                        className={`w-full touch-manipulation rounded-xl border border-zinc-700 py-3 font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-50 ${focusRing}`}
                     >
 
                         ⇄ Swap Striker & Non-Striker
@@ -445,51 +529,96 @@ function BatsmenSelectionCard({
                 )
             }
 
-            <div className="grid gap-3">
+            {
+                error ? (
 
-                {
-                    players.map(player => (
+                    <div className="rounded-xl bg-zinc-800 p-6 text-center">
 
-                        <PlayerSelectionCard
-                            key={player.userId}
-                            player={player}
-                            selected={
-                                selectedPlayers.some(
-                                    p => p.userId === player.userId
-                                )
-                            }
-                            badge={
-                                selectedPlayers[0]?.userId === player.userId
-                                    ? "STRIKER"
-                                    : selectedPlayers[1]?.userId === player.userId
-                                        ? "NON-STRIKER"
-                                        : ""
-                            }
-                            onClick={togglePlayer}
-                        />
+                        <p className="mb-4 text-red-400">
+                            Couldn't load the Playing XI.
+                        </p>
 
-                    ))
-                }
+                        <button
+                            type="button"
+                            onClick={loadBattingPlayingXI}
+                            className={`rounded-lg bg-zinc-700 px-5 py-2 font-medium transition hover:bg-zinc-600 ${focusRing}`}
+                        >
+                            Try again
+                        </button>
+
+                    </div>
+
+                ) : players.length === 0 ? (
+
+                    <div className="rounded-xl bg-zinc-800 p-6 text-center text-zinc-400">
+
+                        No players found in the batting Playing XI.
+
+                    </div>
+
+                ) : (
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+
+                        {
+                            players.map(player => (
+
+                                <PlayerSelectionCard
+                                    key={player.userId}
+                                    player={player}
+                                    selected={
+                                        selectedPlayers.some(
+                                            p => p.userId === player.userId
+                                        )
+                                    }
+                                    badge={badgeFor(player)}
+                                    subtitle={battingInfo(player.userId)}
+                                    onClick={togglePlayer}
+                                />
+
+                            ))
+                        }
+
+                    </div>
+
+                )
+            }
+
+            <div className="sticky bottom-0 -mx-5 -mb-5 rounded-b-2xl border-t border-zinc-800 bg-zinc-900/95 px-5 py-4 backdrop-blur sm:-mx-6 sm:-mb-6 sm:px-6">
+
+                <p
+                    aria-live="polite"
+                    className={`mb-3 min-h-5 truncate text-center text-sm ${selectedPlayers.length === 2 ? "font-medium text-white" : "text-zinc-500"}`}
+                >
+
+                    {hint}
+
+                </p>
+
+                <button
+                    type="button"
+                    onClick={handleConfirm}
+                    disabled={
+                        saving ||
+                        selectedPlayers.length !== 2
+                    }
+                    className={`flex h-14 w-full touch-manipulation items-center justify-center gap-2 rounded-xl bg-green-500 text-lg font-bold text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 ${focusRing}`}
+                >
+
+                    {saving && <Spinner />}
+
+                    {
+                        saving
+                            ? "Saving..."
+                            : isOpeningPair
+                                ? "Confirm Opening Pair"
+                                : "Confirm Batsmen"
+                    }
+
+                </button>
 
             </div>
-            <button
-                onClick={handleConfirm}
-                disabled={
-                    saving ||
-                    selectedPlayers.length !== 2
-                }
-                className="w-full rounded-xl bg-green-600 hover:bg-green-700 disabled:bg-zinc-700 py-4 text-lg font-semibold transition"
-            >
 
-                {
-                    saving
-                        ? "Saving..."
-                        : isOpeningPair
-                            ? "Confirm Opening Pair"
-                            : "Confirm Batsmen"
-                }
-
-            </button>
         </div>
 
     );

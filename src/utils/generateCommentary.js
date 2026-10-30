@@ -1,57 +1,30 @@
 import { commentaryTemplates } from "./commentaryTemplates";
 
-const recentlyUsed = {};
+const FALLBACK = "Interesting delivery.";
 
-function getRandomLine(type, overNumber) {
-  const lines = commentaryTemplates[type];
-
-  if (!lines || lines.length === 0) {
-    return "Interesting delivery.";
+// Which template pool a ball belongs to
+export function getCommentaryType(ball) {
+  if (ball.wicket) {
+    const key =
+      "wicket_" + (ball.dismissalType ?? "").toLowerCase().replace(/[^a-z]/g, "");
+    return commentaryTemplates[key] ? key : "wicket";
   }
 
-  // Initialize over history
-  if (!recentlyUsed[overNumber]) {
-    recentlyUsed[overNumber] = [];
-  }
+  if (ball.extras?.wides > 0) return "wide";
+  if (ball.extras?.noBalls > 0) return "noBall";
+  if (ball.extras?.byes > 0) return "bye";
+  if (ball.extras?.legByes > 0) return "legBye";
 
-  // Filter already used in same over
-  const available = lines.filter(
-    line => !recentlyUsed[overNumber].includes(line)
-  );
-
-  // If all used, reset for this over
-  const finalPool = available.length > 0 ? available : lines;
-
-  const randomLine =
-    finalPool[Math.floor(Math.random() * finalPool.length)];
-
-  // Store recently used
-  recentlyUsed[overNumber].push(randomLine);
-
-  // Prevent memory growing
-  if (recentlyUsed[overNumber].length > 5) {
-    recentlyUsed[overNumber].shift();
-  }
-
-  return randomLine;
+  return ball.runs;
 }
 
-export function generateCommentary(ball, overNumber) {
-  // Wicket
-  if (ball.wicket) {
-    return getRandomLine("wicket", overNumber);
-  }
+// Deterministic: the same ball always gets the same line, so the text doesn't
+// change when the page refreshes. `occurrence` is how many balls of this same
+// type already happened earlier in the over, so repeats get different lines.
+export function generateCommentary(ball, overNumber, occurrence = 0) {
+  const lines = commentaryTemplates[getCommentaryType(ball)];
 
-  // Wide
-  if (ball.extras?.wides > 0) {
-    return getRandomLine("wide", overNumber);
-  }
+  if (!lines || lines.length === 0) return FALLBACK;
 
-  // No Ball
-  if (ball.extras?.noBalls > 0) {
-    return getRandomLine("noBall", overNumber);
-  }
-
-  // Runs
-  return getRandomLine(ball.runs, overNumber);
+  return lines[(overNumber + occurrence) % lines.length];
 }

@@ -1,58 +1,206 @@
-import PlayerCheckbox from "./PlayerCheckbox";
+import PlayerSelectionCard from "./PlayerSelectionCard";
+
+const XI_SIZE = 11;
+
+const GROUPS = [
+    { role: "BATTER", label: "Batters", short: "BAT" },
+    { role: "WICKET_KEEPER", label: "Wicket-keepers", short: "WK" },
+    { role: "ALL_ROUNDER", label: "All-rounders", short: "AR" },
+    { role: "BOWLER", label: "Bowlers", short: "BOWL" },
+];
 
 function TeamPlayingXI({
     teamName,
     players,
     selectedPlayers,
-    onTogglePlayer
+    onTogglePlayer,
+    minBowlingOptions = 0
 }) {
+
+    const count = selectedPlayers.length;
+
+    const full = count >= XI_SIZE;
+
+    // --------------------------------------------------
+    // Group the squad by role (display only)
+    // --------------------------------------------------
+
+    const groups = GROUPS.map(group => ({
+        ...group,
+        players: players.filter(p => p.role === group.role)
+    }));
+
+    const others = players.filter(
+        p => !GROUPS.some(group => group.role === p.role)
+    );
+
+    if (others.length > 0) {
+
+        groups.push({
+            role: "OTHER",
+            label: "Other",
+            short: "OTHER",
+            players: others
+        });
+
+    }
+
+    const selectedIn = (group) =>
+        group.players.filter(p => selectedPlayers.includes(p.userId)).length;
+
+    const makeUp = groups
+        .map(group => ({ short: group.short, n: selectedIn(group) }))
+        .filter(item => item.n > 0)
+        .map(item => `${item.n} ${item.short}`)
+        .join(" · ");
+
+    // Same roles the bowler picker offers later in the match
+    const bowlingOptions = groups
+        .filter(group => group.role === "BOWLER" || group.role === "ALL_ROUNDER")
+        .reduce((sum, group) => sum + selectedIn(group), 0);
+
+    const showBowlingCheck = minBowlingOptions > 0 && count > 0;
+
+    const bowlingOk = bowlingOptions >= minBowlingOptions;
 
     return (
 
-        <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-5">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
 
-            <div className="flex justify-between items-center mb-5">
+            {/* Header */}
 
-                <h3 className="text-lg font-semibold">
+            <div className="mb-2 flex items-center justify-between gap-3">
+
+                <h3 className="truncate text-lg font-semibold text-white">
 
                     {teamName}
 
                 </h3>
 
-                <span className="text-sm text-zinc-400">
+                <span
+                    className={`shrink-0 text-sm font-semibold tabular-nums ${full ? "text-green-400" : "text-zinc-400"}`}
+                >
 
-                    {selectedPlayers.length} / 11 Selected
+                    {count} / {XI_SIZE} Selected {full && "✓"}
 
                 </span>
 
             </div>
 
-            <div className="space-y-3">
+            {/* Progress */}
+
+            <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+
+                <div
+                    className={`h-full rounded-full transition-all ${full ? "bg-green-500" : "bg-green-500/60"}`}
+                    style={{ width: `${Math.min(count / XI_SIZE, 1) * 100}%` }}
+                />
+
+            </div>
+
+            {/* Team make-up and bowling check */}
+
+            {(makeUp || showBowlingCheck) && (
+
+                <div className="mb-5 space-y-1 text-sm">
+
+                    {makeUp && (
+                        <p className="text-zinc-400">
+                            {makeUp}
+                        </p>
+                    )}
+
+                    {showBowlingCheck && (
+                        <p
+                            className={
+                                bowlingOk
+                                    ? "text-green-400"
+                                    : full
+                                        ? "text-amber-400"
+                                        : "text-zinc-500"
+                            }
+                        >
+
+                            Bowling options: {bowlingOptions}
+                            {!bowlingOk && ` (needs at least ${minBowlingOptions} to cover every over)`}
+                            {bowlingOk && " ✓"}
+
+                        </p>
+                    )}
+
+                </div>
+
+            )}
+
+            {/* Players, grouped by role */}
+
+            <div className="space-y-6">
 
                 {
-                    players.map(player => {
+                    groups
+                        .filter(group => group.players.length > 0)
+                        .map(group => (
 
-                        const checked =
-                            selectedPlayers.includes(player.userId);
+                            <section key={group.role}>
 
-                        const disabled =
-                            !checked &&
-                            selectedPlayers.length >= 11;
+                                <h4 className="mb-2 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
 
-                        return (
+                                    {group.label}
 
-                            <PlayerCheckbox
-                                key={player.userId}
-                                player={player}
-                                checked={checked}
-                                disabled={disabled}
-                                onChange={onTogglePlayer}
-                            />
+                                    <span className="font-normal normal-case tracking-normal text-zinc-600">
 
-                        );
+                                        {selectedIn(group)} of {group.players.length} picked
 
-                    })
+                                    </span>
+
+                                </h4>
+
+                                <div className="grid gap-2 sm:grid-cols-2">
+
+                                    {
+                                        group.players.map(player => {
+
+                                            const checked =
+                                                selectedPlayers.includes(player.userId);
+
+                                            const blocked = !checked && full;
+
+                                            return (
+
+                                                <div
+                                                    key={player.userId}
+                                                    className={blocked ? "opacity-50" : ""}
+                                                >
+
+                                                    <PlayerSelectionCard
+                                                        player={player}
+                                                        selected={checked}
+                                                        onClick={() => onTogglePlayer(player.userId)}
+                                                    />
+
+                                                </div>
+
+                                            );
+
+                                        })
+                                    }
+
+                                </div>
+
+                            </section>
+
+                        ))
                 }
+
+                {players.length === 0 && (
+
+                    <p className="rounded-xl bg-zinc-800 p-6 text-center text-zinc-400">
+
+                        This team has no players yet.
+
+                    </p>
+
+                )}
 
             </div>
 

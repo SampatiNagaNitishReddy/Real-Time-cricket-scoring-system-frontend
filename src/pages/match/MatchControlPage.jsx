@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import { getMatchDetails, conductToss } from "../../services/matchService";
@@ -16,26 +16,176 @@ import BallControls from "../../components/scoring/BallControls";
 import MatchControlsCard from "../../components/matchControl/MatchControlsCard";
 import InningsBreakCard from "../../components/matchControl/InningsBreakCard";
 
+const prettyName = (n = "") => n.replace(/_/g, " ");
+
+const focusRing =
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500";
+
+// --------------------------------------------------
+// Match finished (completed / cancelled / abandoned)
+// --------------------------------------------------
+
+function ScoreRow({ team, dim = false }) {
+
+    return (
+
+        <div className="flex items-center justify-between gap-4">
+
+            <div className="flex min-w-0 items-center gap-3">
+
+                {team.logo ? (
+                    <img
+                        src={team.logo}
+                        alt=""
+                        className="h-10 w-10 shrink-0 rounded-full bg-zinc-800 object-cover"
+                    />
+                ) : (
+                    <span
+                        aria-hidden="true"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-500/15 font-bold text-green-400"
+                    >
+                        {team.name?.[0]?.toUpperCase()}
+                    </span>
+                )}
+
+                <p className={`truncate font-semibold ${dim ? "text-zinc-400" : "text-white"}`}>
+                    {team.name}
+                </p>
+
+            </div>
+
+            <p className={`text-2xl font-bold tabular-nums ${dim ? "text-zinc-400" : "text-white"}`}>
+
+                {team.score}
+                <span className="text-lg font-medium text-zinc-500">
+                    /{team.wickets}
+                </span>
+
+            </p>
+
+        </div>
+
+    );
+
+}
+
+function FinishedCard({ match }) {
+
+    const completed = match.status === "COMPLETED";
+
+    const title =
+        completed
+            ? "Match completed"
+            : match.status === "CANCELLED"
+                ? "Match cancelled"
+                : "Match abandoned";
+
+    const titleStyle =
+        completed
+            ? "text-green-400"
+            : "text-red-400";
+
+    return (
+
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-8">
+
+            <p className={`text-sm font-semibold uppercase tracking-wider ${titleStyle}`}>
+
+                {title}
+
+            </p>
+
+            {match.result ? (
+
+                <p className="mt-2 text-2xl font-bold text-white">
+
+                    {match.result}
+
+                </p>
+
+            ) : !completed ? (
+
+                <p className="mt-2 text-zinc-300">
+
+                    Scoring has stopped for this match. Nothing more can be recorded.
+
+                </p>
+
+            ) : null}
+
+            <div className="mt-6 space-y-4 rounded-xl bg-zinc-800 p-5">
+
+                <ScoreRow team={match.teamA} />
+
+                <ScoreRow team={match.teamB} />
+
+            </div>
+
+            {completed && match.manOfTheMatch && (
+
+                <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-zinc-800 py-1 pl-1 pr-4">
+
+                    {match.manOfTheMatch.image && (
+                        <img
+                            src={match.manOfTheMatch.image}
+                            alt=""
+                            className="h-7 w-7 rounded-full object-cover"
+                        />
+                    )}
+
+                    <span className="text-sm text-zinc-400">Man of the match</span>
+
+                    <span className="text-sm font-semibold text-white">
+                        {prettyName(match.manOfTheMatch.name)}
+                    </span>
+
+                </div>
+
+            )}
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+
+                <Link
+                    to={`/match/${match.matchId}`}
+                    className={`rounded-lg bg-green-500 px-5 py-3 text-center font-semibold text-black transition hover:bg-green-400 ${focusRing}`}
+                >
+
+                    View full scorecard
+
+                </Link>
+
+                <Link
+                    to="/dashboard/matches"
+                    className={`rounded-lg border border-zinc-700 px-5 py-3 text-center font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white ${focusRing}`}
+                >
+
+                    Back to my matches
+
+                </Link>
+
+            </div>
+
+        </div>
+
+    );
+
+}
+
+// --------------------------------------------------
+// Page
+// --------------------------------------------------
+
 function MatchControlPage() {
 
     const { matchId } = useParams();
 
     const [match, setMatch] = useState(null);
 
-    const [playingXI, setPlayingXI] = useState(null);
-
     const [loading, setLoading] = useState(true);
 
-    const [saving, setSaving] = useState({
-        toss: false,
-        playingXI: false,
-        startMatch: false,
-        batsmen: false,
-        bowler: false,
-        endFirstInnings: false,
-        secondInnings: false,
-        endMatch: false,
-    });
+    const [loadError, setLoadError] = useState(false);
+
+    const [tossSaving, setTossSaving] = useState(false);
 
     const fetchMatch = useCallback(async () => {
 
@@ -45,9 +195,13 @@ function MatchControlPage() {
 
             setMatch(data);
 
+            setLoadError(false);
+
         } catch (err) {
 
             console.error(err);
+
+            setLoadError(true);
 
             toast.error("Failed to load match");
 
@@ -62,12 +216,11 @@ function MatchControlPage() {
     //handlers
     const handleConductToss = async (winner, decision) => {
 
+        if (tossSaving) return;
+
         try {
 
-            setSaving((prev) => ({
-                ...prev,
-                toss: true
-            }));
+            setTossSaving(true);
 
             await conductToss(
                 matchId,
@@ -88,15 +241,26 @@ function MatchControlPage() {
 
         } finally {
 
-            setSaving((prev) => ({
-                ...prev,
-                toss: false
-            }));
+            setTossSaving(false);
 
         }
 
     };
+
+    const retry = () => {
+
+        setLoading(true);
+
+        fetchMatch();
+
+    };
+
     useEffect(() => {
+
+        // A different match was opened: don't show the previous one meanwhile
+        setMatch(null);
+
+        setLoading(true);
 
         fetchMatch();
 
@@ -106,9 +270,15 @@ function MatchControlPage() {
 
         return (
 
-            <div className="min-h-screen bg-black text-white flex items-center justify-center">
+            <div className="min-h-screen bg-black">
 
-                Loading Match...
+                <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+
+                    <div className="h-40 animate-pulse rounded-2xl bg-zinc-900" />
+
+                    <div className="h-64 animate-pulse rounded-2xl bg-zinc-900" />
+
+                </div>
 
             </div>
 
@@ -120,9 +290,48 @@ function MatchControlPage() {
 
         return (
 
-            <div className="min-h-screen bg-black text-white flex items-center justify-center">
+            <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-black px-4 text-center text-white">
 
-                Match not found.
+                <p className="text-xl font-semibold">
+
+                    {loadError ? "Couldn't load this match" : "Match not found"}
+
+                </p>
+
+                <p className="text-zinc-400">
+
+                    {loadError
+                        ? "Check your connection and try again."
+                        : "It may have been removed, or you may not be its scorer."}
+
+                </p>
+
+                <div className="flex gap-3">
+
+                    {loadError && (
+
+                        <button
+                            type="button"
+                            onClick={retry}
+                            className={`rounded-lg bg-zinc-800 px-5 py-2 font-medium transition hover:bg-zinc-700 ${focusRing}`}
+                        >
+
+                            Try again
+
+                        </button>
+
+                    )}
+
+                    <Link
+                        to="/dashboard/matches"
+                        className={`rounded-lg px-5 py-2 font-medium text-zinc-400 transition hover:text-white ${focusRing}`}
+                    >
+
+                        Back to my matches
+
+                    </Link>
+
+                </div>
 
             </div>
 
@@ -160,11 +369,16 @@ function MatchControlPage() {
             innings?.currentBowlerId
         );
 
+    const finished =
+        match.status === "COMPLETED" ||
+        match.status === "CANCELLED" ||
+        match.status === "ABANDONED";
+
     return (
 
         <div className="min-h-screen bg-black text-white">
 
-            <div className="max-w-7xl mx-auto p-6 space-y-6">
+            <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
 
                 <MatchHeader match={match} />
 
@@ -174,7 +388,7 @@ function MatchControlPage() {
 
                         <TossCard
                             match={match}
-                            loading={saving.toss}
+                            loading={tossSaving}
                             onConductToss={handleConductToss}
                         />
 
@@ -187,8 +401,6 @@ function MatchControlPage() {
 
                         <PlayingXICard
                             match={match}
-                            playingXI={playingXI}
-                            setPlayingXI={setPlayingXI}
                             refreshMatch={fetchMatch}
                         />
 
@@ -217,25 +429,16 @@ function MatchControlPage() {
 
                     )
                 }
+
+                {/* Completed / Cancelled / Abandoned */}
                 {
-                    match.status === "COMPLETED" && (
+                    finished && (
 
-                        <div className="space-y-6">
-
-                            
-
-                            <div className="bg-zinc-900 rounded-2xl p-8 text-center">
-
-                                <p className="text-xl text-zinc-200">
-                                    {match.result}
-                                </p>
-
-                            </div>
-
-                        </div>
+                        <FinishedCard match={match} />
 
                     )
                 }
+
                 {
                     (
                         match.status === "LIVE_FIRST_INNINGS" ||
@@ -273,13 +476,13 @@ function MatchControlPage() {
 
                         ) : (
 
-                            <div className="grid lg:grid-cols-3 gap-6">
+                            <div className="grid gap-6 lg:grid-cols-3">
 
                                 <div className="lg:col-span-1">
                                     <CompactScorecard match={match} />
                                 </div>
 
-                                <div className="lg:col-span-2">
+                                <div className="space-y-6 lg:col-span-2">
 
                                     <MatchControlsCard
                                         match={match}

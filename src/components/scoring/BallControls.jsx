@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 
 import PlayerSelectionCard from "../matchControl/PlayerSelectionCard";
+import { Spinner } from "../auth/fields";
 
 import {
   addBall, undoBall
@@ -99,13 +100,24 @@ const RUN_OPTIONS = [
 // Helpers
 // --------------------------------------------------
 
-function SectionTitle({ children }) {
+const prettyName = (n = "") => n.replace(/_/g, " ");
+
+const focusRing =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500";
+
+function SectionTitle({ children, hint }) {
 
   return (
 
-    <h3 className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-3">
+    <h3 className="mb-3 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
 
       {children}
+
+      {hint && (
+        <span className="font-normal normal-case tracking-normal text-zinc-600">
+          {hint}
+        </span>
+      )}
 
     </h3>
 
@@ -116,25 +128,30 @@ function SectionTitle({ children }) {
 function DeliveryButton({
   active,
   label,
-  onClick
+  onClick,
+  extra = false,
+  disabled = false
 }) {
+
+  const activeStyle = extra
+    ? "bg-amber-500 text-black"
+    : "bg-green-500 text-black";
 
   return (
 
     <button
+      type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`
-                px-4
-                py-2
-                rounded-lg
-                font-medium
-                transition
-
-                ${active
-          ? "bg-blue-600 text-white"
-          : "bg-zinc-800 hover:bg-zinc-700"
+        touch-manipulation rounded-xl px-3 py-3 font-semibold transition
+        disabled:cursor-not-allowed disabled:opacity-50
+        ${focusRing}
+        ${active
+          ? activeStyle
+          : "bg-zinc-800 text-white hover:bg-zinc-700"
         }
-            `}
+      `}
     >
 
       {label}
@@ -144,38 +161,118 @@ function DeliveryButton({
   );
 
 }
+
+function PlayerChip({ label, name, detail, active = false }) {
+
+  return (
+
+    <div className="rounded-xl bg-zinc-800 px-4 py-3">
+
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+
+        {active && (
+          <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+        )}
+
+        {label}
+
+      </p>
+
+      <p className="truncate font-semibold text-white">
+        {name ? prettyName(name) : "—"}
+      </p>
+
+      <p className="text-sm text-zinc-400">
+        {detail}
+      </p>
+
+    </div>
+
+  );
+
+}
+
+function ConfirmModal({
+  title,
+  children,
+  confirmLabel,
+  busyLabel,
+  busy,
+  onConfirm,
+  onClose
+}) {
+
+  useEffect(() => {
+
+    const onKey = (e) => {
+      if (e.key === "Escape" && !busy) onClose();
+    };
+
+    document.addEventListener("keydown", onKey);
+
+    return () => document.removeEventListener("keydown", onKey);
+
+  }, [onClose, busy]);
+
+  return (
+
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
+    >
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
+      >
+
+        <h2 className="text-xl font-bold text-white">
+          {title}
+        </h2>
+
+        <div className="mt-3 text-zinc-300">
+          {children}
+        </div>
+
+        <div className="mt-6 flex gap-3">
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className={`flex-1 rounded-lg border border-zinc-700 py-3 font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-50 ${focusRing}`}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 py-3 font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60 ${focusRing}`}
+          >
+            {busy && <Spinner />}
+            {busy ? busyLabel : confirmLabel}
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  );
+
+}
+
 function BallControls({
   match,
   refreshMatch
 }) {
-
-  //Handlers
-  const handleUndoBall = async () => {
-
-    try {
-
-      setUndoLoading(true);
-
-      await undoBall(match.matchId);
-
-      toast.success("Last ball undone");
-
-      refreshMatch();
-
-    } catch (err) {
-
-      toast.error(
-        err.response?.data?.error ||
-        "Failed to undo ball"
-      );
-
-    } finally {
-
-      setUndoLoading(false);
-
-    }
-
-  };
 
   // --------------------------------------------------
   // State
@@ -197,32 +294,94 @@ function BallControls({
 
   const [undoLoading, setUndoLoading] = useState(false);
 
+  const [showUndoConfirm, setShowUndoConfirm] = useState(false);
+
   const [bowlingSquad, setBowlingSquad] = useState([]);
+
+  const [squadStatus, setSquadStatus] = useState("loading");
+
+  const [squadAttempt, setSquadAttempt] = useState(0);
+
+  // Anything in flight locks every control, so a double-tap can't
+  // record a ball (or undo one) twice.
+  const busy = loading || undoLoading;
+
+  // --------------------------------------------------
+  // Bowling squad (fielders)
+  // --------------------------------------------------
+
+  const bowlingTeamId = match?.currentBowlingTeam;
+
   useEffect(() => {
 
-    const loadSquad = async () => {
+    if (!bowlingTeamId) return;
 
-      if (!match?.currentBowlingTeam) return;
+    let ignore = false;
 
-      try {
+    setSquadStatus("loading");
 
-        const squad = await getTeamSquad(
-          match.currentBowlingTeam
-        );
+    getTeamSquad(bowlingTeamId)
 
-        setBowlingSquad(squad);
+      .then((squad) => {
 
-      } catch (err) {
+        if (ignore) return;
+
+        setBowlingSquad(squad ?? []);
+        setSquadStatus("ready");
+
+      })
+
+      .catch((err) => {
 
         console.error(err);
 
-      }
+        if (!ignore) setSquadStatus("error");
 
+      });
+
+    return () => {
+      ignore = true;
     };
 
-    loadSquad();
+  }, [bowlingTeamId, squadAttempt]);
 
-  }, [match]);
+  // --------------------------------------------------
+  // Available Dismissals
+  // (this hook must stay above the early return below)
+  // --------------------------------------------------
+
+  const availableDismissals = useMemo(() => {
+
+    if (deliveryType === "wide") {
+
+      return WIDE_DISMISSALS;
+
+    }
+
+    if (deliveryType === "noBall") {
+
+      return NO_BALL_DISMISSALS;
+
+    }
+
+    return DISMISSAL_TYPES;
+
+  }, [deliveryType]);
+
+  // --------------------------------------------------
+  // Current Innings
+  // --------------------------------------------------
+
+  const innings =
+    match?.currentInnings === 2
+      ? match?.secondInnings
+      : match?.firstInnings;
+
+  if (!innings) {
+
+    return null;
+
+  }
 
   // --------------------------------------------------
   // Reset Draft
@@ -243,22 +402,6 @@ function BallControls({
     setSelectedOutBatsman(null);
 
   };
-  // --------------------------------------------------
-  // Current Innings
-  // --------------------------------------------------
-
-  const innings =
-    match?.currentInnings === 2
-      ? match?.secondInnings
-      : match?.firstInnings;
-
-  if (!innings) {
-
-    return null;
-
-  }
-
-
 
   // --------------------------------------------------
   // Current Players
@@ -275,6 +418,7 @@ function BallControls({
     player => player.batsmanId === innings?.nonStrikerId
 
   );
+
   const currentBowler = innings?.bowling?.find(
 
     player => player.bowlerId === innings?.currentBowlerId
@@ -287,28 +431,6 @@ function BallControls({
 
   const isFreeHit =
     innings?.nextBallIsFreeHit === true;
-
-  // --------------------------------------------------
-  // Available Dismissals
-  // --------------------------------------------------
-
-  const availableDismissals = useMemo(() => {
-
-    if (deliveryType === "wide") {
-
-      return WIDE_DISMISSALS;
-
-    }
-
-    if (deliveryType === "noBall") {
-
-      return NO_BALL_DISMISSALS;
-
-    }
-
-    return DISMISSAL_TYPES;
-
-  }, [deliveryType]);
 
   // --------------------------------------------------
   // Selected Dismissal
@@ -354,9 +476,73 @@ function BallControls({
       !showWicketForm ||
       canConfirmWicket
     );
+
+  // Steps unlock one after the other (the layout itself never moves)
+  const runsUnlocked = deliveryType !== null;
+  const wicketUnlocked = deliveryType !== null && runs !== null;
+
+  // --------------------------------------------------
+  // What the scorer sees above the Record button
+  // --------------------------------------------------
+
+  const deliveryLabel = DELIVERY_TYPES.find(
+    d => d.value === deliveryType
+  )?.label;
+
+  const hint =
+    missingBatsman ? "Set the batsmen first."
+      : missingBowler ? "Set the bowler first."
+        : !deliveryType ? "Choose the delivery type."
+          : runs === null ? "Choose the runs."
+            : showWicketForm && !dismissalType ? "Choose the dismissal type."
+              : showWicketForm && needsFielder && !selectedFielder ? "Select the fielder."
+                : showWicketForm && isRunOut && !selectedOutBatsman ? "Select who got out."
+                  : null;
+
+  const summary = [
+    deliveryLabel,
+    runs !== null ? `${runs} ${runs === 1 ? "run" : "runs"}` : null,
+    dismissal ? `Wicket (${dismissal.label})` : null
+  ].filter(Boolean).join(" · ");
+
+  // --------------------------------------------------
+  // Handlers
+  // --------------------------------------------------
+
+  const handleUndoBall = async () => {
+
+    if (busy) return;
+
+    try {
+
+      setUndoLoading(true);
+
+      await undoBall(match.matchId);
+
+      toast.success("Last ball undone");
+
+      await refreshMatch();
+
+    } catch (err) {
+
+      toast.error(
+        err.response?.data?.error ||
+        "Failed to undo ball"
+      );
+
+    } finally {
+
+      setUndoLoading(false);
+
+      setShowUndoConfirm(false);
+
+    }
+
+  };
+
   const handleSubmit = async () => {
 
-    if (!isReady || loading) return;
+    if (!isReady || busy) return;
 
     try {
 
@@ -409,29 +595,67 @@ function BallControls({
 
   return (
 
-    <div className="bg-zinc-900 rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
 
-        <h2 className="text-xl font-bold mb-6">
+      {/* -------------------------------------------------- */}
+      {/* Header */}
+      {/* -------------------------------------------------- */}
+
+      <div className="mb-5 flex items-center justify-between gap-3">
+
+        <h2 className="text-xl font-bold text-white">
 
           Ball Controls
 
         </h2>
+
         <button
-          onClick={handleUndoBall}
-          disabled={loading}
-          className="
-        px-4 py-2
-        rounded-lg
-        bg-red-600
-        hover:bg-red-700
-        transition
-        disabled:opacity-50
-      "
+          type="button"
+          onClick={() => setShowUndoConfirm(true)}
+          disabled={busy}
+          className={`
+            touch-manipulation rounded-lg border border-red-500/40 px-4 py-2
+            text-sm font-medium text-red-400 transition
+            hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50
+            ${focusRing}
+          `}
         >
           ↶ Undo Last Ball
         </button>
+
       </div>
+
+      {/* -------------------------------------------------- */}
+      {/* Who this ball is for */}
+      {/* -------------------------------------------------- */}
+
+      <div className="mb-6 grid gap-2 sm:grid-cols-3">
+
+        <PlayerChip
+          active
+          label="On strike"
+          name={striker?.batsmanName}
+          detail={striker ? `${striker.runs} (${striker.balls})` : ""}
+        />
+
+        <PlayerChip
+          label="Non-striker"
+          name={nonStriker?.batsmanName}
+          detail={nonStriker ? `${nonStriker.runs} (${nonStriker.balls})` : ""}
+        />
+
+        <PlayerChip
+          label="Bowler"
+          name={currentBowler?.bowlerName}
+          detail={
+            currentBowler
+              ? `${currentBowler.overs} ov · ${currentBowler.runs}/${currentBowler.wickets}`
+              : ""
+          }
+        />
+
+      </div>
+
       {/* -------------------------------------------------- */}
       {/* Free Hit Banner */}
       {/* -------------------------------------------------- */}
@@ -447,7 +671,7 @@ function BallControls({
 
             </p>
 
-            <p className="text-sm text-yellow-300 mt-1">
+            <p className="mt-1 text-sm text-yellow-300">
 
               Only Run Out can dismiss the batter.
 
@@ -459,10 +683,10 @@ function BallControls({
       }
 
       {/* -------------------------------------------------- */}
-      {/* Delivery Type */}
+      {/* 1. Delivery Type */}
       {/* -------------------------------------------------- */}
 
-      <div className="mb-8">
+      <section className="mb-7">
 
         <SectionTitle>
 
@@ -470,7 +694,7 @@ function BallControls({
 
         </SectionTitle>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
 
           {
             DELIVERY_TYPES.map((delivery) => (
@@ -478,6 +702,8 @@ function BallControls({
               <DeliveryButton
                 key={delivery.value}
                 label={delivery.label}
+                extra={delivery.value !== "normal"}
+                disabled={busy}
                 active={deliveryType === delivery.value}
                 onClick={() => {
 
@@ -505,200 +731,218 @@ function BallControls({
           }
 
         </div>
-        {/* -------------------------------------------------- */}
-        {/* Runs */}
-        {/* -------------------------------------------------- */}
+
+      </section>
+
+      {/* -------------------------------------------------- */}
+      {/* 2. Runs */}
+      {/* -------------------------------------------------- */}
+
+      <section
+        aria-disabled={!runsUnlocked}
+        className={`mb-7 transition ${runsUnlocked ? "" : "opacity-40"}`}
+      >
+
+        <SectionTitle>
+
+          {
+            deliveryType === "wide"
+              ? "Wide Runs"
+              : deliveryType === "noBall"
+                ? "Runs Off No Ball"
+                : deliveryType === "bye"
+                  ? "Bye Runs"
+                  : deliveryType === "legBye"
+                    ? "Leg Bye Runs"
+                    : "Runs"
+          }
+
+        </SectionTitle>
 
         {
-          deliveryType && (
+          zeroRunDismissal && (
 
-            <div className="mb-8">
+            <div className="mb-3 rounded-lg bg-zinc-800 px-3 py-2 text-sm text-yellow-400">
 
-              <SectionTitle>
+              Runs are locked to <strong>0</strong> for this dismissal.
 
-                {
-                  deliveryType === "wide"
-                    ? "Wide Runs"
-                    : deliveryType === "noBall"
-                      ? "Runs Off No Ball"
-                      : deliveryType === "bye"
-                        ? "Bye Runs"
-                        : deliveryType === "legBye"
-                          ? "Leg Bye Runs"
-                          : "Runs"
-                }
+            </div>
 
-              </SectionTitle>
+          )
+        }
 
-              {
-                zeroRunDismissal && (
+        <div className="grid grid-cols-6 gap-2">
 
-                  <div className="mb-3 rounded-lg bg-zinc-800 px-3 py-2 text-sm text-yellow-400">
+          {
+            RUN_OPTIONS.map((value) => (
 
-                    Runs are locked to <strong>0</strong> for this dismissal.
+              <button
+                key={value}
+                type="button"
+                disabled={!runsUnlocked || zeroRunDismissal || busy}
+                onClick={() => setRuns(value)}
+                className={`
+                  h-14 touch-manipulation rounded-xl text-xl font-bold transition
+                  disabled:cursor-not-allowed
+                  ${focusRing}
 
-                  </div>
+                  ${runs === value
+                    ? "bg-green-500 text-black"
+                    : `bg-zinc-800 hover:bg-zinc-700 ${value === 4
+                      ? "text-blue-400"
+                      : value === 6
+                        ? "text-green-400"
+                        : "text-white"
+                    }`
+                  }
 
-                )
-              }
+                  ${zeroRunDismissal && runs !== value ? "opacity-50" : ""}
+                `}
+              >
 
-              <div className="grid grid-cols-6 gap-3">
+                {value}
 
-                {
-                  RUN_OPTIONS.map((value) => (
+              </button>
 
-                    <button
-                      key={value}
-                      disabled={zeroRunDismissal}
-                      onClick={() => setRuns(value)}
-                      className={`
-                                            h-12
-                                            rounded-xl
-                                            font-bold
-                                            transition
+            ))
+          }
 
-                                            ${runs === value
-                          ? "bg-blue-600 text-white"
-                          : "bg-zinc-800 hover:bg-zinc-700"
-                        }
+        </div>
 
-                                            ${zeroRunDismissal
-                          ? "opacity-50 cursor-not-allowed"
-                          : ""
-                        }
-                                        `}
-                    >
+      </section>
 
-                      {value}
+      {/* -------------------------------------------------- */}
+      {/* 3. Wicket */}
+      {/* -------------------------------------------------- */}
 
-                    </button>
+      <section
+        aria-disabled={!wicketUnlocked}
+        className={`transition ${wicketUnlocked ? "" : "opacity-40"}`}
+      >
 
-                  ))
-                }
+        <SectionTitle hint="optional">
+
+          Wicket
+
+        </SectionTitle>
+
+        {
+          dismissalType ? (
+
+            <div className="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+
+              <div>
+
+                <p className="font-semibold text-red-400">
+
+                  Wicket Added
+
+                </p>
+
+                <p className="mt-1 text-sm text-zinc-300">
+
+                  {
+                    availableDismissals.find(
+                      d => d.value === dismissalType
+                    )?.label
+                  }
+
+                </p>
 
               </div>
 
-            </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
 
-          )
-        }
-        {/* -------------------------------------------------- */}
-        {/* Wicket */}
-        {/* -------------------------------------------------- */}
+                  setDismissalType("");
 
-        {
-          deliveryType &&
-          runs !== null && (
+                  setSelectedFielder(null);
 
-            <div className="mb-8">
+                  setSelectedOutBatsman(null);
 
-              <SectionTitle>
+                  setShowWicketForm(false);
 
-                Wicket
+                }}
+                className={`touch-manipulation rounded-lg px-3 py-2 text-sm text-red-400 hover:text-red-300 disabled:opacity-50 ${focusRing}`}
+              >
 
-              </SectionTitle>
+                Remove
 
-              {
-                dismissalType ? (
-
-                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-center justify-between">
-
-                    <div>
-
-                      <p className="text-red-400 font-semibold">
-
-                        Wicket Added
-
-                      </p>
-
-                      <p className="text-sm text-zinc-300 mt-1">
-
-                        {
-                          availableDismissals.find(
-                            d => d.value === dismissalType
-                          )?.label
-                        }
-
-                      </p>
-
-                    </div>
-
-                    <button
-                      onClick={() => {
-
-                        setDismissalType("");
-
-                        setSelectedFielder(null);
-
-                        setSelectedOutBatsman(null);
-
-                        setShowWicketForm(false);
-
-                      }}
-                      className="text-sm text-red-400 hover:text-red-300"
-                    >
-
-                      Remove
-
-                    </button>
-
-                  </div>
-
-                ) : (
-
-                  <button
-                    onClick={() => setShowWicketForm(true)}
-                    className="
-                                        w-full
-                                        py-3
-                                        rounded-xl
-                                        border
-                                        border-dashed
-                                        border-zinc-700
-                                        hover:border-red-500
-                                        hover:text-red-400
-                                        transition
-                                    "
-                  >
-
-                    + Add Wicket (Optional)
-
-                  </button>
-
-                )
-
-              }
+              </button>
 
             </div>
 
-          )
+          ) : !showWicketForm ? (
+
+            <button
+              type="button"
+              disabled={!wicketUnlocked || busy}
+              onClick={() => setShowWicketForm(true)}
+              className={`
+                w-full touch-manipulation rounded-xl border border-dashed
+                border-zinc-700 py-3 transition
+                hover:border-red-500 hover:text-red-400
+                disabled:cursor-not-allowed
+                ${focusRing}
+              `}
+            >
+
+              + Add Wicket (Optional)
+
+            </button>
+
+          ) : null
+
         }
-        {/* -------------------------------------------------- */}
+
+        {/* ------------------------------------------------ */}
         {/* Dismissal Type */}
-        {/* -------------------------------------------------- */}
+        {/* ------------------------------------------------ */}
 
         {
           showWicketForm && (
 
-            <div className="mb-8">
+            <div className="mt-4 rounded-xl border border-red-500/20 bg-zinc-950/40 p-4">
 
-              <SectionTitle>
+              <div className="mb-3 flex items-center justify-between">
 
-                Dismissal Type
+                <SectionTitle>
 
-              </SectionTitle>
+                  Dismissal Type
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                </SectionTitle>
+
+                {!dismissalType && (
+
+                  <button
+                    type="button"
+                    onClick={() => setShowWicketForm(false)}
+                    className={`-mt-3 rounded px-2 py-1 text-sm text-zinc-400 hover:text-white ${focusRing}`}
+                  >
+
+                    Cancel
+
+                  </button>
+
+                )}
+
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
 
                 {
-                  availableDismissals.map((dismissal) => (
+                  availableDismissals.map((d) => (
 
                     <button
-                      key={dismissal.value}
+                      key={d.value}
+                      type="button"
+                      disabled={busy}
                       onClick={() => {
 
                         setDismissalType(
-                          dismissal.value
+                          d.value
                         );
 
                         setSelectedFielder(null);
@@ -707,7 +951,7 @@ function BallControls({
 
                         if (
                           ZERO_RUN_DISMISSALS.includes(
-                            dismissal.value
+                            d.value
                           )
                         ) {
 
@@ -717,19 +961,18 @@ function BallControls({
 
                       }}
                       className={`
-                                            rounded-xl
-                                            p-3
-                                            font-medium
-                                            transition
+                        touch-manipulation rounded-xl p-3 font-medium transition
+                        disabled:cursor-not-allowed
+                        ${focusRing}
 
-                                            ${dismissalType === dismissal.value
+                        ${dismissalType === d.value
                           ? "bg-red-600 text-white"
                           : "bg-zinc-800 hover:bg-zinc-700"
                         }
-                                        `}
+                      `}
                     >
 
-                      {dismissal.label}
+                      {d.label}
 
                     </button>
 
@@ -741,14 +984,40 @@ function BallControls({
               {
                 needsFielder && (
 
-                  <>
+                  <div className="mt-6">
+
                     <SectionTitle>
 
                       Select Fielder
 
                     </SectionTitle>
 
-                    <div className="space-y-3">
+                    {squadStatus === "loading" && (
+                      <p className="text-sm text-zinc-400">
+                        Loading fielders…
+                      </p>
+                    )}
+
+                    {squadStatus === "error" && (
+                      <p className="text-sm text-red-400">
+                        Couldn't load the fielders.{" "}
+                        <button
+                          type="button"
+                          onClick={() => setSquadAttempt((n) => n + 1)}
+                          className="font-medium underline"
+                        >
+                          Try again
+                        </button>
+                      </p>
+                    )}
+
+                    {squadStatus === "ready" && bowlingSquad.length === 0 && (
+                      <p className="text-sm text-zinc-400">
+                        No players found in the fielding team.
+                      </p>
+                    )}
+
+                    <div className="grid gap-2 sm:grid-cols-2">
 
                       {
                         bowlingSquad.map(player => (
@@ -767,19 +1036,21 @@ function BallControls({
 
                     </div>
 
-                  </>
+                  </div>
 
                 )
               }
+
               {
                 isRunOut && (
 
-                  <>
+                  <div className="mt-6">
+
                     <SectionTitle>
                       Who got out?
                     </SectionTitle>
 
-                    <div className="space-y-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
 
                       <PlayerSelectionCard
                         player={{
@@ -815,41 +1086,80 @@ function BallControls({
 
                     </div>
 
-                  </>
+                  </div>
 
                 )
               }
+
             </div>
 
           )
         }
 
-      </div>
-      {
-        isReady && (
+      </section>
 
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="
-                w-full
-                h-14
-                rounded-xl
-                bg-green-600
-                hover:bg-green-700
-                font-bold
-                transition
-                disabled:opacity-50
-            "
+      {/* -------------------------------------------------- */}
+      {/* Record bar (stays in view while scrolling) */}
+      {/* -------------------------------------------------- */}
+
+      <div className="sticky bottom-0 -mx-5 -mb-5 mt-7 rounded-b-2xl border-t border-zinc-800 bg-zinc-900/95 px-5 py-4 backdrop-blur sm:-mx-6 sm:-mb-6 sm:px-6">
+
+        <p
+          aria-live="polite"
+          className={`mb-3 min-h-5 text-center text-sm ${hint ? "text-zinc-500" : "font-medium text-white"}`}
+        >
+
+          {hint ?? summary}
+
+        </p>
+
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!isReady || busy}
+          className={`
+            flex h-14 w-full touch-manipulation items-center justify-center gap-2
+            rounded-xl bg-green-500 text-lg font-bold text-black transition
+            hover:bg-green-400
+            disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500
+            ${focusRing}
+          `}
+        >
+
+          {loading && <Spinner />}
+
+          {
+            loading
+              ? "Recording..."
+              : "Record Ball"
+          }
+
+        </button>
+
+      </div>
+
+      {/* -------------------------------------------------- */}
+      {/* Undo confirmation */}
+      {/* -------------------------------------------------- */}
+
+      {
+        showUndoConfirm && (
+
+          <ConfirmModal
+            title="Undo the last ball?"
+            confirmLabel="Undo ball"
+            busyLabel="Undoing..."
+            busy={undoLoading}
+            onConfirm={handleUndoBall}
+            onClose={() => setShowUndoConfirm(false)}
           >
 
-            {
-              loading
-                ? "Recording..."
-                : "Record Ball"
-            }
+            <p>
+              This removes the most recently recorded ball. Live scores
+              update for everyone watching.
+            </p>
 
-          </button>
+          </ConfirmModal>
 
         )
       }

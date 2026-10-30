@@ -1,17 +1,66 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import toast from "react-hot-toast";
 
 import PlayerSearch from "../../components/user/PlayerSearch";
+import { Field, Spinner } from "../../components/auth/fields";
 import {
     updateTeam,
-    getTeamDetails
+    getTeamDetails,
+    getTeamSquad,
 } from "../../services/teamService";
+
+// The backend may send a string, { error } or { message }
+const errorMessage = (err, fallback) => {
+    const data = err.response?.data;
+    if (typeof data === "string" && data) return data;
+    return data?.error || data?.message || fallback;
+};
+
+function Section({ title, description, children }) {
+    return (
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
+
+            <h2 className="text-lg font-semibold text-white">{title}</h2>
+
+            {description && (
+                <p className="mt-1 text-sm text-zinc-400">{description}</p>
+            )}
+
+            <div className="mt-5">{children}</div>
+
+        </section>
+    );
+}
+
+function LogoImage({ src, name }) {
+    const [failed, setFailed] = useState(false);
+
+    if (!src || failed) {
+        return (
+            <span className="flex h-full w-full items-center justify-center bg-green-500/15 text-3xl font-bold text-green-400">
+                {name?.[0]?.toUpperCase() ?? "🛡️"}
+            </span>
+        );
+    }
+
+    return (
+        <img
+            src={src}
+            alt="Team logo"
+            onError={() => setFailed(true)}
+            className="h-full w-full object-cover"
+        />
+    );
+}
 
 function EditTeamPage() {
 
     const navigate = useNavigate();
 
     const { teamId } = useParams();
+
+    const managePath = `/dashboard/teams/${teamId}/manage`;
 
     const [name, setName] = useState("");
 
@@ -20,52 +69,121 @@ function EditTeamPage() {
     const [viceCaptain, setViceCaptain] = useState(null);
 
     const [teamLogo, setTeamLogo] = useState(null);
+    const [preview, setPreview] = useState(null);
+    const [currentLogo, setCurrentLogo] = useState(null);
+
+    // What the team looked like when loaded, to know if anything changed
+    const [initial, setInitial] = useState(null);
 
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+    const [attempt, setAttempt] = useState(0);
 
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        fetchTeam();
-    }, []);
+        let ignore = false; // drop the response if the user navigated away
 
-    const fetchTeam = async () => {
+        const load = async () => {
 
-        try {
+            setLoading(true);
+            setError(false);
 
-            const team = await getTeamDetails(teamId);
+            // Details are required; the squad only supplies player photos
+            const [detailsRes, squadRes] = await Promise.allSettled([
+                getTeamDetails(teamId),
+                getTeamSquad(teamId),
+            ]);
 
-            setName(team.name);
+            if (ignore) return;
 
-            setCaptain({
-                userId: team.captain,
-                name: team.captainName,
-            });
+            if (detailsRes.status === "rejected") {
 
-            setViceCaptain({
-                userId: team.viceCaptain,
-                name: team.viceCaptainName,
-            });
+                console.error(detailsRes.reason);
 
-        } catch (err) {
+                setError(true);
 
-            console.error(err);
+            } else {
 
-            alert("Failed to load team.");
+                const team = detailsRes.value;
 
-            navigate(-1);
+                const squad =
+                    squadRes.status === "fulfilled" ? squadRes.value ?? [] : [];
 
-        } finally {
+                const asPlayer = (userId, fallbackName) => {
+                    const match = squad.find((p) => p.userId === userId);
+
+                    return {
+                        userId,
+                        name: match?.name ?? fallbackName,
+                        profileImage: match?.profileImage,
+                    };
+                };
+
+                setName(team.name);
+                setCaptain(asPlayer(team.captain, team.captainName));
+                setViceCaptain(asPlayer(team.viceCaptain, team.viceCaptainName));
+                setCurrentLogo(team.teamLogoUrl ?? team.teamLogo ?? team.logo ?? null);
+
+                setInitial({
+                    name: team.name,
+                    captainId: team.captain,
+                    viceCaptainId: team.viceCaptain,
+                });
+
+            }
 
             setLoading(false);
 
-        }
+        };
+
+        load();
+
+        return () => {
+            ignore = true;
+        };
+
+    }, [teamId, attempt]);
+
+    // Release the preview URL when it changes or the page closes
+    useEffect(() => {
+        return () => {
+            if (preview) URL.revokeObjectURL(preview);
+        };
+    }, [preview]);
+
+    const handleLogo = (e) => {
+
+        const file = e.target.files[0];
+
+        if (!file) return;
+
+        setTeamLogo(file);
+
+        setPreview(URL.createObjectURL(file));
 
     };
+
+    const dirty =
+        !!initial &&
+        (name.trim() !== initial.name ||
+            captain?.userId !== initial.captainId ||
+            viceCaptain?.userId !== initial.viceCaptainId ||
+            !!teamLogo);
 
     const handleSubmit = async (e) => {
 
         e.preventDefault();
+
+        if (!captain || !viceCaptain) {
+            toast.error("Please select a captain and a vice captain.");
+            return;
+        }
+
+        if (captain.userId === viceCaptain.userId) {
+            toast.error("Captain and vice captain must be different players.");
+            return;
+        }
 
         try {
 
@@ -73,7 +191,7 @@ function EditTeamPage() {
 
             const formData = new FormData();
 
-            formData.append("name", name);
+            formData.append("name", name.trim());
             formData.append("captain", captain.userId);
             formData.append("viceCaptain", viceCaptain.userId);
 
@@ -83,18 +201,15 @@ function EditTeamPage() {
 
             await updateTeam(teamId, formData);
 
-            alert("Team updated successfully.");
+            toast.success("Team updated successfully");
 
-            navigate(-1);
+            navigate(managePath);
 
         } catch (err) {
 
             console.error(err);
 
-            alert(
-                err.response?.data?.error ||
-                "Failed to update team."
-            );
+            toast.error(errorMessage(err, "Failed to update team."));
 
         } finally {
 
@@ -104,102 +219,194 @@ function EditTeamPage() {
 
     };
 
-    if (loading) {
-
-        return (
-
-            <div className="min-h-screen bg-black text-white flex items-center justify-center">
-
-                Loading team...
-
-            </div>
-
-        );
-
-    }
-
     return (
 
-        <div className="min-h-screen bg-black text-white p-8">
+        <div className="min-h-screen bg-black px-4 py-10 text-white sm:px-6">
 
-            <div className="max-w-3xl mx-auto">
+            <div className="mx-auto max-w-3xl">
 
-                <button
-                    onClick={() => navigate(-1)}
-                    className="text-blue-400 hover:text-blue-300 mb-6"
+                <Link
+                    to={managePath}
+                    className="mb-4 inline-flex items-center gap-1 text-sm text-zinc-400 transition hover:text-white"
                 >
-                    ← Back
-                </button>
+                    <span aria-hidden="true">←</span> Manage team
+                </Link>
 
-                <h1 className="text-3xl font-bold mb-8">
-                    Edit Team
+                <h1 className="text-3xl font-bold sm:text-4xl">
+                    Edit team
                 </h1>
 
-                <form
-                    onSubmit={handleSubmit}
-                    className="space-y-6 bg-zinc-900 p-8 rounded-xl"
-                >
+                <p className="mb-8 mt-2 text-zinc-400">
+                    Update the name, logo or leadership of your team.
+                </p>
 
-                    {/* Team Name */}
+                {/* Loading */}
+                {loading && (
+                    <div className="space-y-6">
+                        <div className="h-44 animate-pulse rounded-2xl bg-zinc-900" />
+                        <div className="h-72 animate-pulse rounded-2xl bg-zinc-900" />
+                    </div>
+                )}
 
-                    <div>
+                {/* Error */}
+                {!loading && error && (
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-12 text-center">
 
-                        <label className="block mb-2">
-                            Team Name
-                        </label>
+                        <p className="mb-5 text-red-400">Failed to load team.</p>
 
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="w-full bg-zinc-800 rounded-lg px-4 py-3 outline-none"
-                            required
-                        />
+                        <button
+                            onClick={() => setAttempt((n) => n + 1)}
+                            className="rounded-lg bg-zinc-800 px-5 py-2 font-medium transition hover:bg-zinc-700"
+                        >
+                            Try again
+                        </button>
 
                     </div>
+                )}
 
-                    {/* Captain */}
+                {!loading && !error && (
 
-                    <PlayerSearch
-                        label="Captain"
-                        selectedPlayer={captain}
-                        onSelect={setCaptain}
-                    />
-
-                    {/* Vice Captain */}
-
-                    <PlayerSearch
-                        label="Vice Captain"
-                        selectedPlayer={viceCaptain}
-                        onSelect={setViceCaptain}
-                    />
-
-                    {/* Team Logo */}
-
-                    <div>
-
-                        <label className="block mb-2">
-                            Team Logo (Optional)
-                        </label>
-
-                        <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => setTeamLogo(e.target.files[0])}
-                            className="block w-full text-sm"
-                        />
-
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={saving}
-                        className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg py-3 font-semibold"
+                    <form
+                        onSubmit={handleSubmit}
+                        className="space-y-6"
                     >
-                        {saving ? "Updating..." : "Update Team"}
-                    </button>
 
-                </form>
+                        {/* Identity */}
+                        <Section
+                            title="Team identity"
+                            description="How your team appears on match cards and scorecards."
+                        >
+
+                            <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+
+                                <div className="flex items-center gap-4">
+
+                                    <label
+                                        htmlFor="teamLogo"
+                                        className="group relative h-24 w-24 shrink-0 cursor-pointer overflow-hidden rounded-full border-2 border-dashed border-zinc-600 bg-zinc-800 transition focus-within:border-green-500 hover:border-green-500"
+                                    >
+                                        <input
+                                            id="teamLogo"
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleLogo}
+                                            className="sr-only"
+                                        />
+
+                                        <LogoImage src={preview ?? currentLogo} name={name} />
+
+                                        <span className="absolute inset-x-0 bottom-0 bg-black/60 py-1 text-center text-xs text-white opacity-0 transition group-hover:opacity-100">
+                                            Change
+                                        </span>
+                                    </label>
+
+                                    <div className="sm:hidden">
+                                        <p className="font-medium text-white">Team logo</p>
+                                        <label
+                                            htmlFor="teamLogo"
+                                            className="cursor-pointer text-sm font-medium text-green-400 hover:text-green-300"
+                                        >
+                                            Change logo
+                                        </label>
+                                    </div>
+
+                                </div>
+
+                                <div className="flex-1">
+
+                                    <Field
+                                        label="Team name"
+                                        id="teamName"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        autoComplete="off"
+                                        required
+                                    />
+
+                                    <p className="mt-2 hidden text-sm text-zinc-500 sm:block">
+                                        {preview ? "New logo selected. " : "Logo is optional. "}
+                                        <label
+                                            htmlFor="teamLogo"
+                                            className="cursor-pointer font-medium text-green-400 hover:text-green-300"
+                                        >
+                                            {preview ? "Choose a different one" : "Upload a new one"}
+                                        </label>
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                        </Section>
+
+                        {/* Leadership */}
+                        <Section
+                            title="Leadership"
+                            description="Search to change the captain or vice-captain. They must be different people."
+                        >
+
+                            <div className="-mb-6 grid gap-x-5 sm:grid-cols-2">
+
+                                <PlayerSearch
+                                    label="Captain"
+                                    selectedPlayer={captain}
+                                    onSelect={setCaptain}
+                                    excludeIds={
+                                        viceCaptain
+                                            ? [viceCaptain.userId]
+                                            : []
+                                    }
+                                />
+
+                                <PlayerSearch
+                                    label="Vice captain"
+                                    selectedPlayer={viceCaptain}
+                                    onSelect={setViceCaptain}
+                                    excludeIds={
+                                        captain
+                                            ? [captain.userId]
+                                            : []
+                                    }
+                                />
+
+                            </div>
+
+                        </Section>
+
+                        {/* Actions */}
+                        <div className="space-y-4">
+
+                            {dirty && (
+                                <p className="text-center text-sm text-amber-400">
+                                    You have unsaved changes.
+                                </p>
+                            )}
+
+                            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+
+                                <Link
+                                    to={managePath}
+                                    className="rounded-lg border border-zinc-700 px-6 py-3 text-center font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                                >
+                                    Cancel
+                                </Link>
+
+                                <button
+                                    type="submit"
+                                    disabled={saving || !dirty}
+                                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-500 py-3 font-semibold text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {saving && <Spinner />}
+                                    {saving ? "Saving..." : "Save changes"}
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                    </form>
+
+                )}
 
             </div>
 

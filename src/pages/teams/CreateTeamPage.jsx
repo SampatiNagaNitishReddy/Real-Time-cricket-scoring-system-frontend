@@ -1,8 +1,33 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 
 import PlayerSearch from "../../components/user/PlayerSearch";
+import { Field, Spinner } from "../../components/auth/fields";
 import { createTeam } from "../../services/teamService";
+
+// The backend may send a string, { error } or { message }
+const errorMessage = (err, fallback) => {
+    const data = err.response?.data;
+    if (typeof data === "string" && data) return data;
+    return data?.error || data?.message || fallback;
+};
+
+function Section({ title, description, children }) {
+    return (
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
+
+            <h2 className="text-lg font-semibold text-white">{title}</h2>
+
+            {description && (
+                <p className="mt-1 text-sm text-zinc-400">{description}</p>
+            )}
+
+            <div className="mt-5">{children}</div>
+
+        </section>
+    );
+}
 
 function CreateTeamPage() {
 
@@ -14,25 +39,45 @@ function CreateTeamPage() {
     const [viceCaptain, setViceCaptain] = useState(null);
 
     const [teamLogo, setTeamLogo] = useState(null);
+    const [preview, setPreview] = useState(null);
 
     const [loading, setLoading] = useState(false);
+
+    // Release the preview URL when it changes or the page closes
+    useEffect(() => {
+        return () => {
+            if (preview) URL.revokeObjectURL(preview);
+        };
+    }, [preview]);
+
+    const handleLogo = (e) => {
+
+        const file = e.target.files[0];
+
+        if (!file) return;
+
+        setTeamLogo(file);
+
+        setPreview(URL.createObjectURL(file));
+
+    };
 
     const handleSubmit = async (e) => {
 
         e.preventDefault();
 
         if (!captain) {
-            alert("Please select a captain.");
+            toast.error("Please select a captain.");
             return;
         }
 
         if (!viceCaptain) {
-            alert("Please select a vice captain.");
+            toast.error("Please select a vice captain.");
             return;
         }
 
         if (!teamLogo) {
-            alert("Please select a team logo.");
+            toast.error("Please select a team logo.");
             return;
         }
 
@@ -42,14 +87,14 @@ function CreateTeamPage() {
 
             const formData = new FormData();
 
-            formData.append("name", name);
+            formData.append("name", name.trim());
             formData.append("captain", captain.userId);
             formData.append("viceCaptain", viceCaptain.userId);
             formData.append("teamLogo", teamLogo);
 
             await createTeam(formData);
 
-            alert("Team created successfully.");
+            toast.success("Team created successfully");
 
             navigate("/dashboard/teams");
 
@@ -57,10 +102,7 @@ function CreateTeamPage() {
 
             console.error(err);
 
-            alert(
-                err.response?.data ||
-                "Failed to create team."
-            );
+            toast.error(errorMessage(err, "Failed to create team."));
 
         } finally {
 
@@ -72,100 +114,173 @@ function CreateTeamPage() {
 
     return (
 
-        <div className="min-h-screen bg-black text-white p-8">
+        <div className="min-h-screen bg-black px-4 py-10 text-white sm:px-6">
 
-            <div className="max-w-3xl mx-auto">
+            <div className="mx-auto max-w-3xl">
 
-                <button
-                    onClick={() => navigate(-1)}
-                    className="text-blue-400 hover:text-blue-300 mb-6"
+                <Link
+                    to="/dashboard/teams"
+                    className="mb-4 inline-flex items-center gap-1 text-sm text-zinc-400 transition hover:text-white"
                 >
-                    ← Back
-                </button>
+                    <span aria-hidden="true">←</span> My teams
+                </Link>
 
-                <h1 className="text-3xl font-bold mb-8">
-                    Create Team
+                <h1 className="text-3xl font-bold sm:text-4xl">
+                    Create team
                 </h1>
+
+                <p className="mb-8 mt-2 text-zinc-400">
+                    Give your team a name and a logo, then choose who leads it.
+                </p>
 
                 <form
                     onSubmit={handleSubmit}
-                    className="space-y-6 bg-zinc-900 rounded-xl p-8"
+                    className="space-y-6"
                 >
 
-                    {/* Team Name */}
-
-                    <div>
-
-                        <label className="block mb-2">
-                            Team Name
-                        </label>
-
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="w-full bg-zinc-800 rounded-lg px-4 py-3 outline-none"
-                            placeholder="Enter Team Name"
-                            required
-                        />
-
-                    </div>
-
-                    {/* Captain */}
-
-                    <PlayerSearch
-                        label="Captain"
-                        selectedPlayer={captain}
-                        onSelect={setCaptain}
-                        excludeIds={
-                            viceCaptain
-                                ? [viceCaptain.userId]
-                                : []
-                        }
-                    />
-
-                    {/* Vice Captain */}
-
-                    <PlayerSearch
-                        label="Vice Captain"
-                        selectedPlayer={viceCaptain}
-                        onSelect={setViceCaptain}
-                        excludeIds={
-                            captain
-                                ? [captain.userId]
-                                : []
-                        }
-                    />
-
-                    {/* Team Logo */}
-
-                    <div>
-
-                        <label className="block mb-2">
-                            Team Logo
-                        </label>
-
-                        <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) =>
-                                setTeamLogo(e.target.files[0])
-                            }
-                            className="block w-full text-sm"
-                            required
-                        />
-
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg py-3 font-semibold disabled:opacity-60"
+                    {/* Identity */}
+                    <Section
+                        title="Team identity"
+                        description="How your team appears on match cards and scorecards."
                     >
-                        {loading
-                            ? "Creating Team..."
-                            : "Create Team"}
-                    </button>
+
+                        <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+
+                            {/* Logo */}
+                            <div className="flex items-center gap-4">
+
+                                <label
+                                    htmlFor="teamLogo"
+                                    className="group relative h-24 w-24 shrink-0 cursor-pointer overflow-hidden rounded-full border-2 border-dashed border-zinc-600 bg-zinc-800 transition focus-within:border-green-500 hover:border-green-500"
+                                >
+                                    <input
+                                        id="teamLogo"
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleLogo}
+                                        className="sr-only"
+                                    />
+
+                                    {preview ? (
+                                        <img
+                                            src={preview}
+                                            alt="Team logo preview"
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <span className="flex h-full w-full items-center justify-center text-3xl">
+                                            🛡️
+                                        </span>
+                                    )}
+
+                                    <span className="absolute inset-x-0 bottom-0 bg-black/60 py-1 text-center text-xs text-white opacity-0 transition group-hover:opacity-100">
+                                        Change
+                                    </span>
+                                </label>
+
+                                <div className="sm:hidden">
+                                    <p className="font-medium text-white">Team logo</p>
+                                    <label
+                                        htmlFor="teamLogo"
+                                        className="cursor-pointer text-sm font-medium text-green-400 hover:text-green-300"
+                                    >
+                                        {preview ? "Choose a different logo" : "Upload logo"}
+                                    </label>
+                                </div>
+
+                            </div>
+
+                            {/* Name */}
+                            <div className="flex-1">
+
+                                <Field
+                                    label="Team name"
+                                    id="teamName"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="e.g. Royal Challengers"
+                                    autoComplete="off"
+                                    required
+                                />
+
+                                <p className="mt-2 hidden text-sm text-zinc-500 sm:block">
+                                    Team logo (required):{" "}
+                                    <label
+                                        htmlFor="teamLogo"
+                                        className="cursor-pointer font-medium text-green-400 hover:text-green-300"
+                                    >
+                                        {preview ? "choose a different one" : "upload one"}
+                                    </label>
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                    </Section>
+
+                    {/* Leadership */}
+                    <Section
+                        title="Leadership"
+                        description="Search for registered players. The captain and vice-captain must be different people."
+                    >
+
+                        <div className="-mb-6 grid gap-x-5 sm:grid-cols-2">
+
+                            <PlayerSearch
+                                label="Captain"
+                                selectedPlayer={captain}
+                                onSelect={setCaptain}
+                                excludeIds={
+                                    viceCaptain
+                                        ? [viceCaptain.userId]
+                                        : []
+                                }
+                            />
+
+                            <PlayerSearch
+                                label="Vice captain"
+                                selectedPlayer={viceCaptain}
+                                onSelect={setViceCaptain}
+                                excludeIds={
+                                    captain
+                                        ? [captain.userId]
+                                        : []
+                                }
+                            />
+
+                        </div>
+
+                    </Section>
+
+                    {/* Actions */}
+                    <div className="space-y-4">
+
+                        <p className="text-center text-sm text-zinc-500">
+                            You can add the rest of the squad from the Manage team page after creating the team.
+                        </p>
+
+                        <div className="flex flex-col-reverse gap-3 sm:flex-row">
+
+                            <Link
+                                to="/dashboard/teams"
+                                className="rounded-lg border border-zinc-700 px-6 py-3 text-center font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                            >
+                                Cancel
+                            </Link>
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-500 py-3 font-semibold text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {loading && <Spinner />}
+                                {loading ? "Creating team..." : "Create team"}
+                            </button>
+
+                        </div>
+
+                    </div>
 
                 </form>
 

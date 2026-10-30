@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { loginUser } from "../../services/authService";
 import { useAuth } from "../../context/AuthContext";
+import AuthLayout from "../../components/auth/AuthLayout";
+import { Field, PasswordField, Spinner } from "../../components/auth/fields";
 
 function LoginPage() {
 
@@ -52,84 +54,68 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center px-4">
-
-      <div className="w-full max-w-md bg-zinc-900 p-8 rounded-2xl border border-zinc-800">
-
-        <h1 className="text-3xl font-bold text-white mb-6">
-          Login
-        </h1>
-
-        {error && (
-          <div className="bg-red-500/20 text-red-400 p-3 rounded-lg mb-4">
-            {error}
-          </div>
-        )}
-
-        <form
-          onSubmit={handleLogin}
-          className="space-y-5"
-        >
-
-          <div>
-            <label className="text-zinc-400 text-sm">
-              Email
-            </label>
-
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="Enter Email"
-              className="w-full mt-2 bg-black border border-zinc-700 rounded-lg px-4 py-3 text-white outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-zinc-400 text-sm">
-              Password
-            </label>
-
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Enter Password"
-              className="w-full mt-2 bg-black border border-zinc-700 rounded-lg px-4 py-3 text-white outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 transition py-3 rounded-lg font-semibold text-white"
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Log in to score matches and follow the live action."
+      footer={
+        <p>
+          Don't have an account?{" "}
+          <Link
+            to="/register"
+            className="font-medium text-green-400 hover:text-green-300"
           >
-            {loading ? "Logging in..." : "Login"}
-          </button>
+            Register
+          </Link>
+        </p>
+      }
+    >
 
-        </form>
-        <div className="mt-6 text-center">
-
-          <p className="text-zinc-400">
-
-            Don't have an account?{" "}
-
-            <Link
-              to="/register"
-              className="text-blue-500 hover:text-blue-400 font-medium"
-            >
-              Register
-            </Link>
-
-          </p>
-
+      {error && (
+        <div
+          role="alert"
+          className="mb-5 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+        >
+          {error}
         </div>
+      )}
 
-      </div>
+      <form onSubmit={handleLogin} className="space-y-5">
 
-    </div>
+        <Field
+          label="Email"
+          id="email"
+          type="email"
+          name="email"
+          value={formData.email}
+          onChange={handleChange}
+          placeholder="you@example.com"
+          autoComplete="email"
+          required
+        />
+
+        <PasswordField
+          label="Password"
+          id="password"
+          name="password"
+          value={formData.password}
+          onChange={handleChange}
+          placeholder="Enter your password"
+          autoComplete="current-password"
+          required
+        />
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-500 py-3 font-semibold text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading && <Spinner />}
+          {loading ? "Logging in..." : "Login"}
+        </button>
+
+      </form>
+
+    </AuthLayout>
   );
 }
 

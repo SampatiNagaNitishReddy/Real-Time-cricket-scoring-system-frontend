@@ -1,5 +1,73 @@
 import { useEffect, useState } from "react";
 
+import { Spinner } from "../auth/fields";
+
+const focusRing =
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500";
+
+function TeamLogo({ src, name, size = "h-14 w-14" }) {
+
+    const [failed, setFailed] = useState(false);
+
+    if (!src || failed) {
+
+        return (
+
+            <span
+                aria-hidden="true"
+                className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-green-500/15 text-xl font-bold text-green-400`}
+            >
+
+                {name?.[0]?.toUpperCase()}
+
+            </span>
+
+        );
+
+    }
+
+    return (
+
+        <img
+            src={src}
+            alt=""
+            onError={() => setFailed(true)}
+            className={`${size} shrink-0 rounded-full bg-zinc-800 object-cover`}
+        />
+
+    );
+
+}
+
+function ChoiceButton({ selected, disabled, onClick, children }) {
+
+    return (
+
+        <button
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            disabled={disabled}
+            onClick={onClick}
+            className={`
+                touch-manipulation rounded-xl border p-4 text-left transition
+                disabled:cursor-not-allowed disabled:opacity-60
+                ${focusRing}
+                ${selected
+                    ? "border-green-500 bg-green-500/10"
+                    : "border-zinc-700 bg-zinc-800 hover:border-zinc-500"
+                }
+            `}
+        >
+
+            {children}
+
+        </button>
+
+    );
+
+}
+
 function TossCard({
     match,
     loading = false,
@@ -9,10 +77,17 @@ function TossCard({
     const [tossWinner, setTossWinner] = useState("");
     const [tossDecision, setTossDecision] = useState("BAT");
 
+    // The details API can send the toss winner as a team id or a team name,
+    // so match either one and keep the team *id* in state.
+    const teamFor = (value) =>
+        [match.teamA, match.teamB].find(
+            (team) => team?.id === value || team?.name === value
+        );
+
     useEffect(() => {
 
         if (match?.tossWinner) {
-            setTossWinner(match.tossWinner);
+            setTossWinner(teamFor(match.tossWinner)?.id ?? match.tossWinner);
         }
 
         if (match?.tossDecision) {
@@ -23,123 +98,191 @@ function TossCard({
 
     const handleSubmit = () => {
 
-        if (!tossWinner) {
+        if (!tossWinner || loading) {
             return;
         }
 
         onConductToss(tossWinner, tossDecision);
 
     };
-    
+
+    const selectedTeam = teamFor(tossWinner);
+
+    const decisionWord = tossDecision === "BAT" ? "bat" : "bowl";
 
     return (
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
 
-            <h2 className="text-lg font-semibold mb-5">
+            <h2 className="mb-5 text-xl font-bold text-white">
                 Toss
             </h2>
 
             {
                 match.status === "SCHEDULED" ? (
 
-                    <div className="space-y-4">
+                    <div className="space-y-6">
+
+                        {/* Winner */}
 
                         <div>
 
-                            <label className="block text-sm text-zinc-400 mb-2">
-                                Toss Winner
-                            </label>
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                                Who won the toss?
+                            </p>
 
-                            <select
-                                value={tossWinner}
-                                onChange={(e) =>
-                                    setTossWinner(e.target.value)
-                                }
-                                className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-3"
+                            <div
+                                role="radiogroup"
+                                aria-label="Toss winner"
+                                className="grid gap-3 sm:grid-cols-2"
                             >
 
-                                <option value="">
-                                    Select Team
-                                </option>
+                                {[match.teamA, match.teamB].map((team) => (
 
-                                <option value={match.teamA.id}>
-                                    {match.teamA.name}
-                                </option>
+                                    <ChoiceButton
+                                        key={team.id}
+                                        selected={tossWinner === team.id}
+                                        disabled={loading}
+                                        onClick={() => setTossWinner(team.id)}
+                                    >
 
-                                <option value={match.teamB.id}>
-                                    {match.teamB.name}
-                                </option>
+                                        <span className="flex items-center gap-3">
 
-                            </select>
+                                            <TeamLogo src={team.logo} name={team.name} />
+
+                                            <span className="min-w-0 font-semibold text-white">
+                                                {team.name}
+                                            </span>
+
+                                            {tossWinner === team.id && (
+                                                <span
+                                                    aria-hidden="true"
+                                                    className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500 text-sm font-bold text-black"
+                                                >
+                                                    ✓
+                                                </span>
+                                            )}
+
+                                        </span>
+
+                                    </ChoiceButton>
+
+                                ))}
+
+                            </div>
 
                         </div>
+
+                        {/* Decision */}
 
                         <div>
 
-                            <label className="block text-sm text-zinc-400 mb-2">
-                                Decision
-                            </label>
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                                They chose to
+                            </p>
 
-                            <select
-                                value={tossDecision}
-                                onChange={(e) =>
-                                    setTossDecision(e.target.value)
-                                }
-                                className="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-3"
+                            <div
+                                role="radiogroup"
+                                aria-label="Toss decision"
+                                className="grid grid-cols-2 gap-3"
                             >
 
-                                <option value="BAT">
-                                    Bat
-                                </option>
+                                {[
+                                    { value: "BAT", label: "Bat" },
+                                    { value: "BOWL", label: "Bowl" },
+                                ].map((option) => (
 
-                                <option value="BOWL">
-                                    Bowl
-                                </option>
+                                    <ChoiceButton
+                                        key={option.value}
+                                        selected={tossDecision === option.value}
+                                        disabled={loading}
+                                        onClick={() => setTossDecision(option.value)}
+                                    >
 
-                            </select>
+                                        <span className="block text-center text-lg font-semibold text-white">
+                                            {option.label}
+                                        </span>
+
+                                    </ChoiceButton>
+
+                                ))}
+
+                            </div>
 
                         </div>
 
-                        <button
-                            onClick={handleSubmit}
-                            disabled={loading || !tossWinner}
-                            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:cursor-not-allowed rounded-lg py-3 font-semibold"
-                        >
-                            {loading
-                                ? "Conducting Toss..."
-                                : "Conduct Toss"}
-                        </button>
+                        {/* Summary + confirm */}
+
+                        <div className="space-y-3">
+
+                            <p
+                                aria-live="polite"
+                                className={`min-h-5 text-center text-sm ${selectedTeam ? "font-medium text-white" : "text-zinc-500"}`}
+                            >
+
+                                {selectedTeam
+                                    ? `${selectedTeam.name} won the toss and will ${decisionWord} first.`
+                                    : "Pick the team that won the toss."}
+
+                            </p>
+
+                            <button
+                                type="button"
+                                onClick={handleSubmit}
+                                disabled={loading || !tossWinner}
+                                className={`flex h-14 w-full touch-manipulation items-center justify-center gap-2 rounded-xl bg-green-500 text-lg font-bold text-black transition hover:bg-green-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 ${focusRing}`}
+                            >
+
+                                {loading && <Spinner />}
+
+                                {loading
+                                    ? "Conducting Toss..."
+                                    : "Conduct Toss"}
+
+                            </button>
+
+                        </div>
 
                     </div>
 
                 ) : (
 
-                    <div className="rounded-xl bg-green-950/30 border border-green-800 p-5">
+                    <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-5">
 
-                        <p className="text-green-400 font-semibold mb-3">
+                        <p className="mb-4 font-semibold text-green-400">
                             ✓ Toss Completed
                         </p>
 
-                        <p className="text-lg font-semibold">
+                        <div className="flex items-center gap-4">
 
-                            {
-                                match.tossWinner === match.teamA.id
-                                    ? match.teamA.name
-                                    : match.teamB.name
-                            }
+                            <TeamLogo
+                                src={selectedTeam?.logo}
+                                name={selectedTeam?.name}
+                            />
 
-                        </p>
+                            <div>
 
-                        <p className="text-zinc-400 mt-1">
-                            won the toss and elected to
-                        </p>
+                                <p className="text-lg font-semibold text-white">
 
-                        <p className="mt-3 text-xl font-bold text-white">
+                                    {selectedTeam?.name ?? match.tossWinner}
 
-                            {match.tossDecision}
+                                </p>
 
-                        </p>
+                                <p className="text-zinc-400">
+
+                                    won the toss and elected to{" "}
+
+                                    <span className="font-bold text-white">
+
+                                        {match.tossDecision === "BAT" ? "bat" : "bowl"}
+
+                                    </span>
+
+                                </p>
+
+                            </div>
+
+                        </div>
 
                     </div>
 

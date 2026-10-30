@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import LoginPage from "../pages/auth/LoginPage";
+import StatsPage from "../pages/stats/statsPage";
 import HomePage from "../pages/home/HomePage";
 import MatchDetailsPage from "../pages/MatchDetails/MatchDetailsPage";
 import MatchControlPage from "../pages/match/MatchControlPage";
@@ -17,6 +18,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/stats" element={<StatsPage />} />
       <Route
         path="/match/:matchId"
         element={<MatchDetailsPage />}

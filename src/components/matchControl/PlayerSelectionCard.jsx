@@ -1,3 +1,59 @@
+import { useState } from "react";
+
+const ROLE_MAP = {
+    BATTER: "BAT",
+    BOWLER: "BOWL",
+    ALL_ROUNDER: "AR",
+    WICKET_KEEPER: "WK"
+};
+
+const BADGE_COLORS = {
+    "STRIKER": "bg-green-600",
+    "NON-STRIKER": "bg-blue-600",
+    "SELECTED": "bg-green-600",
+    "Previous Over": "bg-red-600",
+    "Quota Completed": "bg-orange-600",
+    "BOWLER": "bg-blue-600",
+    "ALL_ROUNDER": "bg-purple-600"
+};
+
+const prettyName = (n = "") => n.replace(/_/g, " ");
+
+function Avatar({ src, name }) {
+
+    const [failed, setFailed] = useState(false);
+
+    if (!src || failed) {
+
+        return (
+
+            <span
+                aria-hidden="true"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-500/15 text-lg font-bold text-green-400"
+            >
+
+                {name?.charAt(0)?.toUpperCase() || "?"}
+
+            </span>
+
+        );
+
+    }
+
+    return (
+
+        <img
+            src={src}
+            alt=""
+            loading="lazy"
+            onError={() => setFailed(true)}
+            className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-zinc-700"
+        />
+
+    );
+
+}
+
 function PlayerSelectionCard({
     player,
     selected = false,
@@ -7,116 +63,58 @@ function PlayerSelectionCard({
     onClick
 }) {
 
-    const roleMap = {
-        BATTER: "BAT",
-        BOWLER: "BOWL",
-        ALL_ROUNDER: "AR",
-        WICKET_KEEPER: "WK"
-    };
-
-    const badgeColor = () => {
-
-        switch (badge) {
-
-            case "STRIKER":
-                return "bg-green-600";
-
-            case "NON-STRIKER":
-                return "bg-blue-600";
-
-            case "SELECTED":
-                return "bg-green-600";
-
-            case "Previous Over":
-                return "bg-red-600";
-
-            case "Quota Completed":
-                return "bg-orange-600";
-
-            case "BOWLER":
-                return "bg-blue-600";
-
-            case "ALL_ROUNDER":
-                return "bg-purple-600";
-
-            default:
-                return "bg-zinc-700";
-
-        }
-
-    };
-
+    const role = ROLE_MAP[player.role];
 
     return (
 
-        <div
+        <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={selected}
             onClick={() => {
 
                 if (!disabled) {
 
-                    onClick(player);
+                    onClick?.(player);
 
                 }
 
             }}
             className={`
-                relative
-                flex
-                items-center
-                gap-4
-                p-4
-                rounded-xl
-                border
-                transition-all
+                flex min-h-16 w-full touch-manipulation items-center gap-3
+                rounded-xl border p-3 text-left transition
+                focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-500
 
                 ${
                     disabled
-                        ? "border-zinc-700 bg-zinc-900 opacity-50 cursor-not-allowed"
+                        ? "cursor-not-allowed border-zinc-800 bg-zinc-900 opacity-50"
                         : selected
-                            ? "border-green-500 bg-green-500/10 cursor-pointer"
-                            : "border-zinc-700 bg-zinc-900 hover:border-blue-500 hover:bg-zinc-800 cursor-pointer"
+                            ? "border-green-500 bg-green-500/10"
+                            : "border-zinc-700 bg-zinc-900 hover:border-green-500/60 hover:bg-zinc-800"
                 }
             `}
         >
 
             {/* Avatar */}
 
-            {
-                player.profileImage ? (
-
-                    <img
-                        src={player.profileImage}
-                        alt={player.name}
-                        className="w-14 h-14 rounded-full object-cover"
-                    />
-
-                ) : (
-
-                    <div className="w-14 h-14 rounded-full bg-zinc-700 flex items-center justify-center font-bold text-lg">
-
-                        {player.name.charAt(0)}
-
-                    </div>
-
-                )
-            }
+            <Avatar src={player.profileImage} name={player.name} />
 
             {/* Player Info */}
 
-            <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex-1">
 
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 
-                    <h3 className="font-semibold truncate">
+                    <h3 className="truncate font-semibold text-white">
 
-                        {player.name}
+                        {prettyName(player.name) || "Unknown player"}
 
                     </h3>
 
                     {
                         player.captain && (
 
-                            <span className="text-xs bg-yellow-500 text-black px-2 py-0.5 rounded-full">
+                            <span className="rounded bg-green-500 px-1.5 py-0.5 text-[10px] font-bold text-black">
 
                                 C
 
@@ -128,7 +126,7 @@ function PlayerSelectionCard({
                     {
                         player.viceCaptain && (
 
-                            <span className="text-xs bg-blue-500 px-2 py-0.5 rounded-full">
+                            <span className="rounded bg-zinc-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
 
                                 VC
 
@@ -139,16 +137,22 @@ function PlayerSelectionCard({
 
                 </div>
 
-                <p className="text-sm text-zinc-400">
+                {
+                    player.userId && (
 
-                    {player.userId}
+                        <p className="truncate text-xs text-zinc-500">
 
-                </p>
+                            {player.userId}
+
+                        </p>
+
+                    )
+                }
 
                 {
                     subtitle && (
 
-                        <p className="text-xs text-zinc-500 mt-1">
+                        <p className="mt-0.5 text-sm text-zinc-400">
 
                             {subtitle}
 
@@ -157,56 +161,58 @@ function PlayerSelectionCard({
                     )
                 }
 
+                {
+                    badge && (
+
+                        <span
+                            className={`
+                                mt-1.5 inline-block rounded-full px-2 py-0.5
+                                text-xs font-medium text-white
+                                ${BADGE_COLORS[badge] ?? "bg-zinc-700"}
+                            `}
+                        >
+
+                            {badge.replace(/_/g, " ")}
+
+                        </span>
+
+                    )
+                }
+
             </div>
 
             {/* Role */}
 
-            <span className="text-xs bg-zinc-800 px-3 py-1 rounded-full">
+            {
+                role && (
 
-                {roleMap[player.role]}
+                    <span className="shrink-0 rounded-full bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300">
 
-            </span>
+                        {role}
+
+                    </span>
+
+                )
+            }
 
             {/* Selected */}
 
             {
                 selected && (
 
-                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-green-500 text-black flex items-center justify-center font-bold">
+                    <span
+                        aria-hidden="true"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500 text-sm font-bold text-black"
+                    >
 
                         ✓
 
-                    </div>
+                    </span>
 
                 )
             }
 
-            {/* Badge */}
-
-            {
-                badge && (
-
-                    <div
-                        className={`
-                            absolute
-                            bottom-2
-                            left-4
-                            text-xs
-                            px-2
-                            py-1
-                            rounded-full
-                            ${badgeColor()}
-                        `}
-                    >
-
-                        {badge}
-
-                    </div>
-
-                )
-            }
-
-        </div>
+        </button>
 
     );
 
